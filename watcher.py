@@ -49,11 +49,10 @@ class BirbWatcher:
         thresh = cv2.dilate(thresh, None, iterations=2)
         contours, _ = cv2.findContours(thresh, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
 
-        vis = np.concatenate((grayscale, thresh), axis=0)
-        cv2.imshow('vis', vis)
         return len(contours) > 0
         
     def run(self):
+        print('Starting...')
         self.create_new_file()
         while self.camera.isOpened():
             ret, frame = self.camera.read()
@@ -78,10 +77,6 @@ class BirbWatcher:
                 self.writer.release()
                 self.create_new_file()
 
-            key = cv2.waitKey(1) & 0xFF
-            # if the `q` key is pressed, break from the lop
-            if key == ord("q"):
-                break
         self.cleanup()
 
     @staticmethod
