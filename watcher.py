@@ -3,6 +3,7 @@ import numpy as np
 import os
 import time
 
+from collections import deque
 from datetime import datetime
 from dotenv import load_dotenv
 
@@ -14,20 +15,29 @@ class BirbWatcher:
         self.alert = alert
         self.camera_url = url
         self.camera = cv2.VideoCapture(self.camera_url)
+        self.current_file = None
+        self.detections = 0
         self.writer = None
-        self.last_alert = None  # Time of last sent discord alert.
-        self.prev_frames = []  # Previous 30 frames with applied grayscale and smoothing for motion detection.
+        self.last_alert = None  # Time of last sent discord alert
+        self.prev_frames = deque(maxlen=10)  # Previous frames with applied grayscale and smoothing for motion detection
         self.storage_path = storage_path
 
     def init_writer(self, path):
         frame_width = self.camera.get(cv2.cv2.CAP_PROP_FRAME_WIDTH)
         frame_height = self.camera.get(cv2.cv2.CAP_PROP_FRAME_HEIGHT)
         frame_size = int(frame_width), int(frame_height)
-        fourcc = cv2.VideoWriter_fourcc(*'X264')
+        fourcc = cv2.VideoWriter_fourcc(*'mp4v')
+
         self.writer = cv2.VideoWriter(path, fourcc, 20.0, frame_size)
+        self.current_file = path
+        self.detections = 0
 
     def create_new_file(self):
-        path = self.storage_path + datetime.now().strftime('%Y-%m-%d-%H-%M-%S') + '.avi'
+        if self.current_file is not None and self.detections == 0:
+            print('There was no detected movements in last 15 minutes. Removing ' + self.current_file)
+            os.remove(self.current_file)
+
+        path = self.storage_path + datetime.now().strftime('%Y-%m-%d-%H-%M-%S') + '.mp4'
         self.init_writer(path)
 
     def cleanup(self):
@@ -37,8 +47,6 @@ class BirbWatcher:
 
     def handle_previous_frames(self, current_frame):
         self.prev_frames.append(current_frame)
-        if len(self.prev_frames) > 10:
-            self.prev_frames.pop(0)
         return cv2.absdiff(self.prev_frames[0], current_frame)
 
     def detect_motion(self, frame):
@@ -66,6 +74,8 @@ class BirbWatcher:
             if self.detect_motion(frame):
                 if alert and self.last_alert is None or frametime - self.last_alert > 180:
                     self.last_alert = frametime
+                    self.detections += 1
+
                     msg = 'Motion detected at ' + frame_timestamp + ' Is it a birb?'
                     self.alert.send_message(msg)
                     print(msg)
@@ -73,7 +83,7 @@ class BirbWatcher:
             frame = self.embed_timestamp(frame, frame_timestamp)
             self.writer.write(frame)
 
-            if int(frametime) % 1800 == 0:
+            if int(frametime) % 900 == 0:
                 self.writer.release()
                 self.create_new_file()
 
